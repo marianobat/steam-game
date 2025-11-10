@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>STEAM Swipe — Rompecabezas 3×3</title>
+<style>
+  :root{
+    --bg:#0b1020;           /* fondo */
+    --panel:#0f162e;
+    --text:#e6f4ff;
+    --muted:#9fb3c8;
+    --accent:#4dd0e1;       /* cian */
+    --ok:#81c784;           /* verde */
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0; display:grid; place-items:center; min-height:100%;
+    background: radial-gradient(1200px 800px at 70% 20%, #121a36 0%, var(--bg) 60%);
+    color:var(--text); font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial;
+  }
+  .game{width:min(720px, 96vw); padding:16px; border-radius:20px; background:linear-gradient(180deg,#0d1430,#0b1020); box-shadow:0 18px 50px rgba(0,0,0,.45), inset 0 0 0 1px rgba(255,255,255,.06)}
+  .top{display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:12px}
+  h1{font-size:18px; font-weight:700; letter-spacing:.5px; color:#cfe5ff; margin:0}
+  .stats{display:flex; gap:8px}
+  .pill{background: rgba(255,255,255,.06); padding:6px 10px; border-radius:999px; border:1px solid rgba(255,255,255,.08); color:var(--muted); font-size:14px}
+  .pill strong{color:var(--text)}
+  .btn{cursor:pointer; border:none; background:var(--accent); color:#052026; padding:8px 12px; border-radius:10px; font-weight:700; box-shadow:0 8px 22px rgba(77,208,225,.25)}
+  .board{position:relative; width:100%; aspect-ratio:1/1; border-radius:16px; overflow:hidden; background:#0c1632; border:1px solid rgba(255,255,255,.06)}
+  .grid{position:absolute; inset:10px; display:grid; grid-template-columns:repeat(3,1fr); grid-template-rows:repeat(3,1fr); gap:8px}
+  .tile{
+    position:relative; border-radius:12px; overflow:hidden; user-select:none; -webkit-user-drag:none;
+    background-size:300% 300%; background-position:center; background-repeat:no-repeat; 
+    display:grid; place-items:center; color:#fff; font-weight:800; font-size:26px;
+    box-shadow:inset 0 0 0 1px rgba(255,255,255,.08), 0 10px 20px rgba(0,0,0,.25);
+    transition: box-shadow .15s ease;
+  }
+  .tile:active{box-shadow:inset 0 0 0 1px rgba(255,255,255,.12), 0 6px 14px rgba(0,0,0,.25)}
+  .empty{background:#0b142c; box-shadow:inset 0 0 0 1px rgba(255,255,255,.04)}
+
+  /* overlay final */
+  .overlay{position:absolute; inset:0; display:grid; place-items:center; pointer-events:none; opacity:0; transition:opacity .5s ease}
+  .overlay.show{opacity:1}
+  .modal{ text-align:center; padding:26px 20px; border-radius:16px; width:min(520px,92vw);
+    background:linear-gradient(180deg, rgba(16,28,64,.86), rgba(8,12,28,.86)); border:1px solid rgba(255,255,255,.12); backdrop-filter: blur(8px);
+    box-shadow:0 18px 60px rgba(0,0,0,.5);
+  }
+  .brand{font-weight:900; font-size:40px; letter-spacing:.6px; color:#ffd166; text-shadow:0 0 18px rgba(255,209,102,.25); margin:.1em 0}
+  .modal .btn{background:var(--ok); color:#062012; box-shadow:0 10px 26px rgba(129,199,132,.28)}
+
+  .foot{margin-top:10px; color:var(--muted); font-size:13px}
+</style>
+</head>
+<body>
+  <div class="game" id="game">
+    <div class="top">
+      <h1>STEAM Swipe — Rompecabezas 3×3</h1>
+      <div class="stats">
+        <div class="pill">Movs: <strong id="moves">0</strong></div>
+        <div class="pill">Tiempo: <strong id="time">0.0s</strong></div>
+        <button class="btn" id="reset">Reiniciar</button>
+      </div>
+    </div>
+
+    <div class="board">
+      <div class="grid" id="grid" aria-label="Tablero 3 por 3"></div>
+      <div class="overlay" id="overlay">
+        <div class="modal">
+          <div class="brand">SMARTTEAM</div>
+          <p style="color:#bcd2ea; margin:.2em 0 .8em">¡Completaste el puzzle! 🎉</p>
+          <button class="btn" id="cta">Conocer SmartTEAM</button>
+          <div class="foot">Tiempo <span id="finalTime">0.0s</span> · Movs <span id="finalMoves">0</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+// --- Generar una imagen SVG embebida con SMARTTEAM/STEAM ---
+const svgData = encodeURIComponent(`
+  <svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 900 900'>
+    <defs>
+      <linearGradient id='g' x1='0' y1='0' x2='1' y2='1'>
+        <stop offset='0%' stop-color='#162a56'/>
+        <stop offset='100%' stop-color='#0d1734'/>
+      </linearGradient>
+      <radialGradient id='glow' cx='50%' cy='40%' r='60%'>
+        <stop offset='0%' stop-color='rgba(77,208,225,0.35)'/>
+        <stop offset='100%' stop-color='rgba(77,208,225,0)'/>
+      </radialGradient>
+    </defs>
+    <rect width='100%' height='100%' fill='url(#g)'/>
+    <circle cx='450' cy='380' r='300' fill='url(#glow)'/>
+
+    <g font-family='Segoe UI, Roboto, Helvetica, Arial' text-anchor='middle'>
+      <text x='450' y='420' font-size='160' font-weight='900' fill='#e6f4ff' letter-spacing='8' style='paint-order:stroke;stroke:#162a56;stroke-width:8'>STEAM</text>
+      <text x='450' y='530' font-size='84' font-weight='900' fill='#ffd166' letter-spacing='6' style='paint-order:stroke;stroke:#2b1f08;stroke-width:6'>SMARTTEAM</text>
+    </g>
+    <g opacity='.2'>
+      <text x='50' y='860' font-size='28' fill='#9fb3c8'>Deslizá para ordenar</text>
+    </g>
+  </svg>
+`);
+const BG_URL = `url("data:image/svg+xml;utf8,${svgData}")`;
+
+// --- Estado del puzzle ---
+const gridEl = document.getElementById('grid');
+const movesEl = document.getElementById('moves');
+const timeEl = document.getElementById('time');
+const overlay = document.getElementById('overlay');
+const resetBtn = document.getElementById('reset');
+const ctaBtn = document.getElementById('cta');
+const finalTimeEl = document.getElementById('finalTime');
+const finalMovesEl = document.getElementById('finalMoves');
+
+const N = 3;                  // 3x3
+const TOTAL = N*N;            // 9 posiciones
+let tiles = [];               // array de 0..7 y null para vacío
+let emptyIndex = 8;           // índice del vacío
+let moves = 0;
+let startTime = null;
+let timerId = null;
+let finished = false;
+
+function init(){
+  // crear nodos si no existen
+  if(gridEl.children.length === 0){
+    for(let i=0;i<TOTAL;i++){
+      const div = document.createElement('div');
+      div.className = 'tile';
+      div.setAttribute('role','button');
+      div.setAttribute('aria-label','Ficha');
+      div.addEventListener('click', ()=>onTileClick(i));
+      gridEl.appendChild(div);
+    }
+    // teclado
+    window.addEventListener('keydown', onKey);
+  }
+  shuffleSolvable();
+  moves = 0; movesEl.textContent = moves;
+  startTime = performance.now();
+  finished = false;
+  overlay.classList.remove('show');
+  startTimer();
+}
+
+function startTimer(){
+  clearInterval(timerId);
+  timerId = setInterval(()=>{
+    const t = (performance.now()-startTime)/1000;
+    timeEl.textContent = t.toFixed(1)+'s';
+  }, 100);
+}
+
+function coords(index){ return {r: Math.floor(index/N), c: index%N}; }
+function indexFrom(rc){ return rc.r*N + rc.c; }
+
+// mezclar garantizando resolubilidad (grid impar: inversions par)
+function shuffleSolvable(){
+  // estado objetivo: [0,1,2,3,4,5,6,7,null]
+  let arr = [0,1,2,3,4,5,6,7,null];
+  do{
+    // Fisher–Yates ignorando null al final y luego moviéndolo a alguna posición
+    arr = [0,1,2,3,4,5,6,7,null];
+    for(let i=arr.length-1;i>0;i--){
+      const j = Math.floor(Math.random()*(i+1));
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+  } while(!isSolvable(arr) || isSolved(arr));
+  tiles = arr;
+  emptyIndex = tiles.indexOf(null);
+  render();
+}
+
+function inversions(seq){
+  const a = seq.filter(v=>v!==null);
+  let inv=0;
+  for(let i=0;i<a.length;i++)
+    for(let j=i+1;j<a.length;j++) if(a[i]>a[j]) inv++;
+  return inv;
+}
+function isSolvable(arr){
+  const inv = inversions(arr);
+  return inv % 2 === 0; // para N impar
+}
+function isSolved(arr){
+  for(let i=0;i<TOTAL-1;i++) if(arr[i]!==i) return false;
+  return arr[TOTAL-1]===null;
+}
+
+function render(){
+  const children = [...gridEl.children];
+  children.forEach((div,i)=>{
+    const v = tiles[i];
+    if(v===null){
+      div.className = 'tile empty';
+      div.style.backgroundImage = 'none';
+      div.textContent='';
+      return;
+    }
+    div.className='tile';
+    div.style.backgroundImage = BG_URL;
+    // calcular background-position para pieza v (0..7)
+    const {r,c} = coords(v);
+    const posX = (c/(N-1))*100; // 0,50,100
+    const posY = (r/(N-1))*100; // 0,50,100
+    div.style.backgroundPosition = `${posX}% ${posY}%`;
+    div.style.backgroundSize = `${N*100}% ${N*100}%`;
+    div.textContent = '';
+  });
+}
+
+function neighborsOf(idx){
+  const {r,c} = coords(idx);
+  const res = [];
+  if(r>0) res.push(indexFrom({r:r-1,c}));
+  if(r<N-1) res.push(indexFrom({r:r+1,c}));
+  if(c>0) res.push(indexFrom({r,c:c-1}));
+  if(c<N-1) res.push(indexFrom({r,c:c+1}));
+  return res;
+}
+
+function tryMove(idx){
+  if(finished) return false;
+  if(neighborsOf(idx).includes(emptyIndex)){
+    [tiles[idx], tiles[emptyIndex]] = [tiles[emptyIndex], tiles[idx]];
+    emptyIndex = idx;
+    moves++; movesEl.textContent = moves;
+    render();
+    checkWin();
+    return true;
+  }
+  return false;
+}
+
+function onTileClick(idx){ tryMove(idx); }
+
+function onKey(e){
+  // mover vacío con flechas (mueve la ficha opuesta)
+  const {r,c} = coords(emptyIndex);
+  let target = null;
+  if(e.key==='ArrowUp' && r<N-1) target = indexFrom({r:r+1,c});
+  else if(e.key==='ArrowDown' && r>0) target = indexFrom({r:r-1,c});
+  else if(e.key==='ArrowLeft' && c<N-1) target = indexFrom({r,c:c+1});
+  else if(e.key==='ArrowRight' && c>0) target = indexFrom({r,c:c-1});
+  if(target!=null){ e.preventDefault(); tryMove(target); }
+}
+
+function checkWin(){
+  if(isSolved(tiles)){
+    finished = true;
+    clearInterval(timerId);
+    finalMovesEl.textContent = moves;
+    const t = (performance.now()-startTime)/1000; finalTimeEl.textContent = t.toFixed(1)+'s';
+    overlay.classList.add('show');
+    window.dispatchEvent(new CustomEvent('analytics',{detail:{type:'completed', moves, time:t}}));
+  }
+}
+
+// botones
+resetBtn.addEventListener('click', init);
+ctaBtn.addEventListener('click', ()=>{
+  window.dispatchEvent(new CustomEvent('analytics',{detail:{type:'cta_click'}}));
+  window.location.href = 'https://smartteamdigital.com/';
+});
+
+// init
+init();
+</script>
+</body>
+</html>
