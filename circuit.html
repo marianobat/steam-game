@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Circuit Connect — STEAM</title>
+  <style>
+    :root{
+      --bg:#0b1020;          /* fondo oscuro para contraste */
+      --panel:#0f162e;
+      --accent:#4dd0e1;      /* cian SmartTEAM-like */
+      --accent2:#ffd166;     /* acento cálido */
+      --ok:#81c784;          /* verde éxito */
+      --warn:#ef5350;        /* rojo */
+      --text:#e6f4ff;
+      --muted:#9fb3c8;
+      --glow:0 0 14px rgba(77,208,225,.8);
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0; display:grid; place-items:center; height:100%;
+      background: radial-gradient(1200px 800px at 70% 20%, #121a36 0%, var(--bg) 60%);
+      color:var(--text); font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial;
+    }
+    .game{
+      width:min(920px, 96vw); aspect-ratio: 16/9; position:relative;
+      border-radius:20px; overflow:hidden; background:linear-gradient(180deg, #0d1430 0%, #0b1020 100%);
+      box-shadow:0 20px 60px rgba(0,0,0,.45), inset 0 0 0 1px rgba(255,255,255,.06);
+    }
+    .hud{position:absolute; inset:12px 12px auto 12px; display:flex; gap:10px; align-items:center}
+    .pill{
+      background: rgba(255,255,255,.06); padding:8px 12px; border-radius:999px;
+      font-size:14px; color:var(--muted); border:1px solid rgba(255,255,255,.08)
+    }
+    .pill strong{color:var(--text)}
+    .cta{
+      position:absolute; inset:auto 16px 16px auto; display:flex; gap:10px; align-items:center; z-index:4
+    }
+    .btn{cursor:pointer; border:none; font-weight:600; letter-spacing:.2px;
+      padding:10px 14px; border-radius:12px; transition:.2s transform;
+      background:var(--accent); color:#062026; box-shadow:0 8px 22px rgba(77,208,225,.25)
+    }
+    .btn:active{transform:translateY(1px)}
+
+    /* overlay final */
+    .overlay{position:absolute; inset:0; display:grid; place-items:center; pointer-events:none; opacity:0; transition:opacity .6s ease}
+    .overlay.show{opacity:1}
+    .modal{
+      text-align:center; padding:28px 22px; border-radius:18px; width:min(540px, 92vw);
+      background:linear-gradient(180deg, rgba(16,28,64,.85), rgba(8,12,28,.85));
+      border:1px solid rgba(255,255,255,.12); backdrop-filter: blur(8px);
+      box-shadow:0 18px 60px rgba(0,0,0,.5)
+    }
+    .brand{font-weight:800; letter-spacing:.6px; font-size:40px; margin:.2em 0 .1em; color:var(--accent2); text-shadow:0 0 18px rgba(255,209,102,.25)}
+    .subtitle{color:var(--muted); margin-top:4px}
+    .modal .btn{background:var(--ok); color:#062012; box-shadow:0 10px 26px rgba(129,199,132,.28)}
+
+    /* tooltip */
+    .tip{position:absolute; left:50%; transform:translateX(-50%);
+      top:10px; background:rgba(255,255,255,.06); color:var(--muted);
+      padding:8px 12px; border:1px solid rgba(255,255,255,.08);
+      border-radius:10px; font-size:14px
+    }
+
+    /* small helper label */
+    .label{position:absolute; font-size:12px; color:#99aac5; opacity:.8}
+
+    /* "luces" en letras */
+    .lit{filter: drop-shadow(0 0 10px rgba(77,208,225,.9));}
+    .node circle{transition: .2s ease all}
+    .node.connected circle{fill:var(--ok); stroke:rgba(255,255,255,.8)}
+
+    /* mobile */
+    @media (max-width: 680px){
+      .brand{font-size:34px}
+    }
+  </style>
+</head>
+<body>
+  <div class="game" id="game">
+    <div class="hud">
+      <div class="pill">Conectá las letras <strong>STEAM</strong> a la batería 💡</div>
+      <div class="pill" id="progress">0 / 5</div>
+    </div>
+    <div class="cta">
+      <button class="btn" id="resetBtn" aria-label="Reiniciar">Reiniciar</button>
+    </div>
+
+    <!-- TIP -->
+    <div class="tip">Arrastrá desde la batería hacia cada letra. Soltá cerca del círculo.</div>
+
+    <!-- SVG tablero -->
+    <svg id="board" viewBox="0 0 1200 675" width="100%" height="100%" aria-label="Tablero Circuit Connect" role="img">
+      <!-- plano decorativo -->
+      <defs>
+        <linearGradient id="wire" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%" stop-color="#8be9fd"/>
+          <stop offset="100%" stop-color="#4dd0e1"/>
+        </linearGradient>
+        <radialGradient id="nodeGlow" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stop-color="#b2ebf2"/>
+          <stop offset="100%" stop-color="#26c6da"/>
+        </radialGradient>
+      </defs>
+
+      <!-- líneas (cables) dibujadas por el usuario -->
+      <g id="wires" stroke="url(#wire)" stroke-width="6" stroke-linecap="round" fill="none"></g>
+
+      <!-- batería origen -->
+      <g class="node" id="battery" data-type="battery" transform="translate(120,340)" cursor="pointer">
+        <circle r="28" fill="url(#nodeGlow)" stroke="rgba(255,255,255,.8)" stroke-width="3" />
+        <g transform="translate(44,-18)">
+          <rect x="0" y="0" width="88" height="36" rx="8" fill="#24385f" stroke="#4062a5" stroke-width="2"/>
+          <rect x="86" y="10" width="10" height="16" rx="3" fill="#4062a5"/>
+          <path d="M14,10 h18 M14,22 h36" stroke="#ffd166" stroke-width="3" stroke-linecap="round"/>
+        </g>
+        <text x="0" y="54" text-anchor="middle" fill="#8fb3ff" font-size="14">Batería</text>
+      </g>
+
+      <!-- letras destino -->
+      <g id="targets">
+        <g class="node" id="S" transform="translate(430,160)">
+          <circle r="24" fill="#273a66" stroke="#3f5ea2" stroke-width="2"/>
+          <text x="0" y="6" text-anchor="middle" fill="#9ccfff" font-size="22" font-weight="700">S</text>
+        </g>
+        <g class="node" id="T" transform="translate(760,130)">
+          <circle r="24" fill="#273a66" stroke="#3f5ea2" stroke-width="2"/>
+          <text x="0" y="6" text-anchor="middle" fill="#9ccfff" font-size="22" font-weight="700">T</text>
+        </g>
+        <g class="node" id="E" transform="translate(980,280)">
+          <circle r="24" fill="#273a66" stroke="#3f5ea2" stroke-width="2"/>
+          <text x="0" y="6" text-anchor="middle" fill="#9ccfff" font-size="22" font-weight="700">E</text>
+        </g>
+        <g class="node" id="A" transform="translate(760,500)">
+          <circle r="24" fill="#273a66" stroke="#3f5ea2" stroke-width="2"/>
+          <text x="0" y="6" text-anchor="middle" fill="#9ccfff" font-size="22" font-weight="700">A</text>
+        </g>
+        <g class="node" id="M" transform="translate(430,470)">
+          <circle r="24" fill="#273a66" stroke="#3f5ea2" stroke-width="2"/>
+          <text x="0" y="6" text-anchor="middle" fill="#9ccfff" font-size="22" font-weight="700">M</text>
+        </g>
+      </g>
+
+      <!-- título decorativo -->
+      <g opacity=".25">
+        <text x="600" y="80" text-anchor="middle" fill="#9fb3c8" font-size="28" letter-spacing="6">CIRCUIT CONNECT</text>
+      </g>
+    </svg>
+
+    <!-- overlay final -->
+    <div class="overlay" id="overlay">
+      <div class="modal">
+        <div class="brand" aria-live="polite">SMARTTEAM</div>
+        <div class="subtitle">¡Encendiste todas las letras STEAM! ⚡</div>
+        <p style="margin:14px 0 18px; color:#bcd2ea">Descubrí proyectos, kits y actividades de robótica educativa.</p>
+        <button class="btn" id="ctaBtn">Conocer SmartTEAM</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // --- utilidades ---
+    const $ = (sel, el=document) => el.querySelector(sel);
+    const $$ = (sel, el=document) => [...el.querySelectorAll(sel)];
+
+    const board = $('#board');
+    const battery = $('#battery');
+    const wires = $('#wires');
+    const targets = ['S','T','E','A','M'];
+    const progressEl = $('#progress');
+    const overlay = $('#overlay');
+    const resetBtn = $('#resetBtn');
+    const ctaBtn = $('#ctaBtn');
+
+    const state = {
+      dragging:false,
+      dragLine:null,
+      start:{x:0,y:0},
+      lit: new Set(),
+    };
+
+    // coordenadas absolutas del cursor sobre el SVG
+    const svgPoint = (svg, clientX, clientY) => {
+      const pt = svg.createSVGPoint();
+      pt.x = clientX; pt.y = clientY; return pt.matrixTransform(svg.getScreenCTM().inverse());
+    };
+
+    const getNodeCenter = (g) => {
+      // extrae translate(x,y)
+      const tr = g.getAttribute('transform');
+      const m = /translate\(([-\d.]+),\s*([-\d.]+)\)/.exec(tr);
+      if(!m) return {x:0,y:0};
+      const cx = parseFloat(m[1]);
+      const cy = parseFloat(m[2]);
+      return {x:cx, y:cy};
+    }
+
+    const startDrag = (ev) => {
+      state.dragging = true;
+      const p = svgPoint(board, ev.clientX || ev.touches?.[0]?.clientX, ev.clientY || ev.touches?.[0]?.clientY);
+      const {x,y} = getNodeCenter(battery);
+      state.start = {x, y};
+      const line = document.createElementNS('http://www.w3.org/2000/svg','path');
+      line.setAttribute('d', `M ${x} ${y} Q ${(x+p.x)/2} ${(y+p.y)/2} ${p.x} ${p.y}`);
+      line.setAttribute('stroke-linejoin','round');
+      line.setAttribute('stroke-linecap','round');
+      line.setAttribute('opacity','0.95');
+      wires.appendChild(line);
+      state.dragLine = line;
+      window.dispatchEvent(new CustomEvent('analytics',{detail:{type:'start_drag'}}));
+    };
+
+    const onMove = (ev) => {
+      if(!state.dragging || !state.dragLine) return;
+      const x2 = (ev.clientX || ev.touches?.[0]?.clientX);
+      const y2 = (ev.clientY || ev.touches?.[0]?.clientY);
+      if(x2==null) return;
+      const p = svgPoint(board, x2, y2);
+      const {x,y} = state.start;
+      // curva cuadrática para que se vea "cable" suave
+      state.dragLine.setAttribute('d', `M ${x} ${y} Q ${(x+p.x)/2} ${(y+p.y)/2} ${p.x} ${p.y}`);
+    };
+
+    const endDrag = (ev) => {
+      if(!state.dragging) return;
+      state.dragging = false;
+      if(!state.dragLine){ return; }
+
+      const upX = (ev.clientX || ev.changedTouches?.[0]?.clientX);
+      const upY = (ev.clientY || ev.changedTouches?.[0]?.clientY);
+      const p = svgPoint(board, upX, upY);
+
+      // ¿cayó cerca de algún target?
+      let hitId = null;
+      for(const id of targets){
+        const g = document.getElementById(id);
+        const {x,y} = getNodeCenter(g);
+        const dx = p.x - x, dy = p.y - y;
+        const dist = Math.hypot(dx, dy);
+        if(dist < 36){ hitId = id; break; }
+      }
+
+      if(hitId && !state.lit.has(hitId)){
+        // fijar cable exacto al centro del nodo
+        const {x:x0,y:y0} = state.start;
+        const {x:x1,y:y1} = getNodeCenter(document.getElementById(hitId));
+        state.dragLine.setAttribute('d', `M ${x0} ${y0} Q ${(x0+x1)/2} ${(y0+y1)/2} ${x1} ${y1}`);
+        state.dragLine = null;
+        // encender
+        lightUp(hitId);
+      } else {
+        // cancelar cable si no hubo conexión válida
+        wires.removeChild(state.dragLine);
+        state.dragLine = null;
+        window.dispatchEvent(new CustomEvent('analytics',{detail:{type:'cancel_drag'}}));
+      }
+    };
+
+    const lightUp = (id) => {
+      const g = document.getElementById(id);
+      g.classList.add('connected');
+      g.querySelector('circle').classList.add('lit');
+      state.lit.add(id);
+      progressEl.textContent = `${state.lit.size} / 5`;
+      window.dispatchEvent(new CustomEvent('analytics',{detail:{type:'letter_on', id}}));
+      if(state.lit.size === 5){ complete(); }
+    };
+
+    const complete = () => {
+      overlay.classList.add('show');
+      window.dispatchEvent(new CustomEvent('analytics',{detail:{type:'completed'}}));
+    };
+
+    const reset = () => {
+      // limpiar
+      wires.innerHTML = '';
+      state.lit.clear();
+      $$('#targets .node').forEach(n=>{n.classList.remove('connected'); n.querySelector('circle').classList.remove('lit');});
+      overlay.classList.remove('show');
+      progressEl.textContent = '0 / 5';
+      window.dispatchEvent(new CustomEvent('analytics',{detail:{type:'reset'}}));
+    };
+
+    // listeners
+    battery.addEventListener('mousedown', startDrag);
+    battery.addEventListener('touchstart', startDrag, {passive:true});
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('touchmove', onMove, {passive:true});
+    window.addEventListener('mouseup', endDrag);
+    window.addEventListener('touchend', endDrag);
+
+    resetBtn.addEventListener('click', reset);
+    ctaBtn.addEventListener('click', () => {
+      window.dispatchEvent(new CustomEvent('analytics',{detail:{type:'cta_click'}}));
+      // Redirección (ajustar URL destino en producción)
+      window.location.href = 'https://smartteamdigital.com/';
+    });
+
+    // Accesibilidad/teclado: conectar con teclas 1..5 para pruebas rápidas
+    window.addEventListener('keydown', (e) => {
+      const idx = parseInt(e.key,10);
+      if(idx>=1 && idx<=5){
+        const id = targets[idx-1];
+        if(!state.lit.has(id)){
+          // dibujar un cable virtual
+          const {x:x0,y:y0} = getNodeCenter(battery);
+          const {x:x1,y:y1} = getNodeCenter(document.getElementById(id));
+          const line = document.createElementNS('http://www.w3.org/2000/svg','path');
+          line.setAttribute('d', `M ${x0} ${y0} Q ${(x0+x1)/2} ${(y0+y1)/2} ${x1} ${y1}`);
+          wires.appendChild(line);
+          lightUp(id);
+        }
+      }
+    });
+
+    // Ejemplo de integración analítica simple (puede conectarse a GA4/Segment)
+    window.addEventListener('analytics', (e)=>{
+      // console.log('[analytics]', e.detail);
+      // window.gtag?.('event', e.detail.type, e.detail);
+      // window.analytics?.track?.(e.detail.type, e.detail);
+    });
+  </script>
+</body>
+</html>
